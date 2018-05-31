@@ -76,7 +76,7 @@ class MitmProxyHandler(BaseHTTPRequestHandler):
     do_PUT = do_GET
     do_DELETE = do_GET
     do_OPTIONS = do_GET
-    
+
     def filter_headers(self, headers):
         blacllist = ('connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers', 'transfer-encoding', 'upgrade', 'Accept-Encoding')
         for key in blacllist:
@@ -104,6 +104,13 @@ class MitmProxyHandler(BaseHTTPRequestHandler):
                 return zlib.decompress(data, -zlib.MAX_WBITS)
         else:
             pass
+
+    def do_CONNECT(self):
+        hostname = self.path.split(':')[0]
+
+        from certauth.certauth import CertificateAuthority
+        ca = CertificateAuthority('My Custom CA', 'ca/certs/ca.pem')
+        cert, key = ca.cert_for_host(hostname)
 
 
 def test():
