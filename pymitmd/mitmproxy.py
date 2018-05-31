@@ -9,10 +9,18 @@ import io, socket, sys
 import gzip
 import zlib
 
+from concurrent.futures import ThreadPoolExecutor # pip install futures
 
-class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+
+class PoolMixIn(ThreadingMixIn):
+    def process_request(self, request, client_address):
+        self.pool.submit(self.process_request_thread, request, client_address)
+
+
+class ThreadingHTTPServer(PoolMixIn, HTTPServer):
     address_family = socket.AF_INET6
     daemon_threads = True
+    pool = ThreadPoolExecutor(max_workers=40)
 
     def handle_error(self, request, client_address):
         # surpress socket/ssl related errors
@@ -109,8 +117,21 @@ class MitmProxyHandler(BaseHTTPRequestHandler):
         hostname = self.path.split(':')[0]
 
         from certauth.certauth import CertificateAuthority
-        ca = CertificateAuthority('My Custom CA', 'ca/certs/ca.pem')
-        cert, key = ca.cert_for_host(hostname)
+        ca = CertificateAuthority('My Custom CA', 'ca/certs/ca.pem', cert_cache='tmp/certs')
+        filename = ca.cert_for_host(hostname)
+
+        self.wfile.write("{0} {1} {2}\r\n\r\n".format('HTTP/1.1', 200, 'Connection Established').encode())
+        self.wfile.flush()
+
+        self.connection = ssl.wrap_socket(self.connection, keyfile=filename, certfile=filename, server_side=True)
+        self.rfile = self.connection.makefile("rb", self.rbufsize)
+        self.wfile = self.connection.makefile("wb", self.wbufsize)
+
+        conntype = self.headers.get('Proxy-Connection', '')
+        if conntype.lower() != 'close':
+            self.close_connection = 0
+        else:
+            self.close_connection = 1
 
 
 def test():
